@@ -9,3 +9,8 @@ requirements.txt - used packages; when cloning from Github, PyCharm should insta
 simultProblemdef.py - problem definition function for simulataneous synthesis
 
 simultSynthesize.py - runs the simulatenous synthesis with the problem definition generated with the above funtcion.
+
+succProblemDef.py - problem definition function for successive synthesis
+	
+	
+succSynthesize.py - runs the successive synthesis with the problem definition generated with the above funtcion.
