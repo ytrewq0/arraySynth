@@ -1,7 +1,7 @@
 from arraySynthesis import *
 
 def problemDef(postProcess = False):
-    angStep = 0.25
+    angStep = 1
     fileName = 'patch_circ_dual'
     processNum = 1
 
