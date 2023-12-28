@@ -1,11 +1,12 @@
 from arraySynthesis import *
 
 def problemDef(postProcess = False):
-    angStep = 0.25
+    angStep = 1
     fileName = 'patch_circ_dual'
     processNum = 1
+    maxPasses = 2 # speed up for TEST
 
-    BD = BasicData(angStep, fileName, processNum)
+    BD = BasicData(angStep, fileName, processNum, maxPasses=maxPasses)
 
     thetaCenters = [80, 90]
     phiCenters = [0, 10]
@@ -15,7 +16,7 @@ def problemDef(postProcess = False):
     TP = TargetPattern(thetaCenters, phiCenters, thetaWidth, phiWidth, 'both')
 
     N = 9
-    runTime = 1800
+    runTime = 600
     xMin = np.array([80, 80])
     xMax = np.array([150, 150])
     x0 = np.array([100, 100])
