@@ -4,7 +4,7 @@ arraySynthesis.py - main class for synthesis
 
 postProcess.py - example workflow for visualization
 
-requirements.txt - used packages; when cloning from Github, PyCharm should 
+requirements.txt - used packages; when cloning from Github, PyCharm should install them automatically
 
 simultProblemdef.py - problem definition function for simulataneous synthesis
 
