@@ -6,7 +6,7 @@ postProcess.py - example workflow for visualization
 
 requirements.txt - used packages; when cloning from Github, PyCharm should install them automatically
 
-simultProblemdef.py - problem definition function for simulataneous synthesis
+simultProblemDef.py - problem definition function for simulataneous synthesis
 
 simultSynthesize.py - runs the simulatenous synthesis with the problem definition generated with the above funtcion.
 
