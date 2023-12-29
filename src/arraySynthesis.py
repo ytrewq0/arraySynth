@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 
 # degree to radian conversion
 aconst = 1 / 180 * np.pi
+
+
 # base data class
 
 
@@ -19,7 +21,8 @@ class TargetPattern:
     """
     Class describing to the patterns to synthesize
     """
-    def __init__(self, thetaCenters, phiCenters, thetaWidth, phiWidth, polarization, angleMargin = 0.1):
+
+    def __init__(self, thetaCenters, phiCenters, thetaWidth, phiWidth, polarization, angleMargin=0.1):
         """
         :param thetaCenters [degree]: lobe centers theta direction:
         :param phiCenters [degree]: lobe centers phi direction
@@ -84,11 +87,14 @@ class TargetPattern:
         else:
             raise ValueError("polarization should be 'theta', 'phi' or 'both'")
 
+
 class OptimizationParams:
     """
     Parameters for the optimizer
     """
-    def __init__(self, N, runTime, xMin, xMax, x0, geomParamNames, ampSymbol, phaseSymbol, method = nlopt.GN_DIRECT_L_RAND, dualPort = False):
+
+    def __init__(self, N, runTime, xMin, xMax, x0, geomParamNames, ampSymbol, phaseSymbol,
+                 method=nlopt.GN_DIRECT_L_RAND, dualPort=False):
         """
         :param N: number of antennas
         :param runTime: optimization time limit in seconds
@@ -111,15 +117,19 @@ class OptimizationParams:
         self.optimParamNum = len(xMin)
         self.method = method
 
+
 class BasicData:
     """
-        Named tuple hosting input data for the synthesis
+        Basic input data for the synthesis
     """
 
-    def __init__(self, angStep, fileName, processNum = 1, maxPasses = None):
+    def __init__(self, angStep, fileName, processNum=1, maxPasses=None):
         """
-        :param processNum: process number (relevant for parallel runs)
-        :param fileName:
+        :param angStep: angular resolution of the output far fields
+        :param fileName: obvious
+        :param processNum: process number (relevant for parallel runs), ignore for now
+        :param maxPasses: maximum number of passes in the adaptive HFSS solver
+        
         """
         # Anglular resolution of output
         self.angStep = angStep
@@ -137,13 +147,17 @@ class BasicData:
         self.components = ['__theta', '__phi']
         # number of max passes (HFSS parameter)
         self.maxPasses = maxPasses
+
+
 class Synthesizer:
     """
-        Object hosting output values
+        Object realizing the synthesis
     """
 
-
     def __init__(self, TP, OP, BD):
+        """
+        :param TP, OP, BD: target, optimization and basic data objects
+        """
         self.TP = TP
         self.OP = OP
         self.BD = BD
@@ -181,18 +195,26 @@ class Synthesizer:
         self.targetNorm = np.empty(self.TP.goalNum, np.complex128)
         # impedance matrix placeholder
         self.mutZ = None
-
+        
+        # port string keys ('' for normal, '_p' for second (perpendicular) port
         if self.OP.dualPort:
             self.ports = ['', '_p']
         else:
             self.ports = ['']
+        
+        # dict for transforming port descriptor to index
         self.portKey = {'': 0, "_p": self.OP.N}
 
         # HFSS  handle
         self.app = None
-
-
+        # far field dataframe
+        self.farFields = None
+        
     def fastGenerate(self):
+        """
+        Launch HFSS, generate the far fields dataframe containing the fields corresponding to unit excitations and the 
+        target fields and prepare for synthesis run
+        """
         self.app = Hfss()
         self.app.load_project(self.BD.designPath)
         self.app.field_setups[0].phi_step = self.BD.angStep
@@ -207,8 +229,6 @@ class Synthesizer:
         else:
             self.app.edit_setup(setupName, {'MaximumPasses': self.BD.maxPasses})
         self.app.close_project()
-
-
 
     def generateFarFieldDF(self):
         """
@@ -229,7 +249,7 @@ class Synthesizer:
                 self.farFields[f'c{port}{ind}__phi'] = copy.deepcopy(self.farFields['rEPhi'])
 
         # delete clutter
-        self.farFields = self.farFields.drop(['rETheta', 'rEPhi'], axis = 1)
+        self.farFields = self.farFields.drop(['rETheta', 'rEPhi'], axis=1)
 
         self.intCoeff()
         self.writeTargetPatterns()
@@ -244,10 +264,10 @@ class Synthesizer:
 
         # Define conditions for 'intCoeff' using np.isclose (integral correction at 'doubly' counted points )
         thetaCond = (np.isclose(self.farFields.index.get_level_values('theta'), 0, atol=0.01) +
-                          np.isclose(self.farFields.index.get_level_values('theta'), 180, atol=0.01))
+                     np.isclose(self.farFields.index.get_level_values('theta'), 180, atol=0.01))
 
         phiCond = (np.isclose(self.farFields.index.get_level_values('phi'), -180, atol=0.01) +
-                          np.isclose(self.farFields.index.get_level_values('phi'), 180, atol=0.01))
+                   np.isclose(self.farFields.index.get_level_values('phi'), 180, atol=0.01))
 
         # Assign values to 'intCoeff' based on conditions
         self.farFields['intCoeff'] = 0.5 * (thetaCond | phiCond) + 1 * ~(thetaCond | phiCond)
@@ -262,20 +282,28 @@ class Synthesizer:
                 self.farFields[f'goal{goal}{component}'] = self.farFields[f'c1{component}'] * 0
 
                 condition = (
-                    (self.farFields.index.get_level_values('phi') >= self.TP.phiLims[goal - 1][0] - self.TP.angleMargin) &
-                    (self.farFields.index.get_level_values('phi') - self.TP.angleMargin <= self.TP.phiLims[goal - 1][1]) &
-                    (self.farFields.index.get_level_values('theta') + self.TP.angleMargin >= self.TP.thetaLims[goal - 1][0]) &
-                    (self.farFields.index.get_level_values('theta') - self.TP.angleMargin <= self.TP.thetaLims[goal - 1][1])
-                            )
+                        (self.farFields.index.get_level_values('phi') >= self.TP.phiLims[goal - 1][
+                            0] - self.TP.angleMargin) &
+                        (self.farFields.index.get_level_values('phi') - self.TP.angleMargin <=
+                         self.TP.phiLims[goal - 1][1]) &
+                        (self.farFields.index.get_level_values('theta') + self.TP.angleMargin >=
+                         self.TP.thetaLims[goal - 1][0]) &
+                        (self.farFields.index.get_level_values('theta') - self.TP.angleMargin <=
+                         self.TP.thetaLims[goal - 1][1])
+                )
 
                 self.farFields.loc[condition, f'goal{goal}{component}'] = self.TP.dirVec[goal - 1][ind]
         self.normalizeTargetPatterns()
 
     def normalizeTargetPatterns(self):
+        """
+        self-explanatory
+        """
         self.integrateTarget()
         for goal in range(1, self.TP.goalNum + 1):
             for component in self.BD.components:
-                self.farFields[f'goal{goal}{component}'] = self.farFields[f'goal{goal}{component}'] / np.sqrt(self.targetNorm[goal - 1])
+                self.farFields[f'goal{goal}{component}'] = self.farFields[f'goal{goal}{component}'] / np.sqrt(
+                    self.targetNorm[goal - 1])
 
     def hfssSetZeroExcit(self):
         """
@@ -294,30 +322,39 @@ class Synthesizer:
         assert np.abs(thStep - phStep) / thStep < 0.01
 
     def innerProduct(self, var1, var2):
+        """
+        inner product operator definition
+        :param var1: operand, dataframe column
+        :param var2: same
+        """
         return self.BD.angStep ** 2 * aconst ** 2 * np.sum(
             self.farFields['intCoeff'] * np.sin(self.farFields.index.get_level_values('theta') * aconst) *
             np.conjugate(var2) * var1)
 
     def integrateAntFields(self):
         """
-        calculate norms of antenna excitations
+        calculate norms of antenna excitations, and normalize fields with them
         """
         self.antNorm = np.zeros_like(self.antNorm)
         for ant in range(1, self.OP.N + 1):
             for port in self.ports:
                 for component in self.BD.components:
-                    self.antNorm[ant - 1 + self.portKey[port]] += self.innerProduct(self.farFields[f'c{port}{ant}{component}'],
-                                                               self.farFields[f'c{port}{ant}{component}'])
+                    self.antNorm[ant - 1 + self.portKey[port]] += self.innerProduct(
+                        self.farFields[f'c{port}{ant}{component}'],
+                        self.farFields[f'c{port}{ant}{component}'])
 
         self.normalizeAntFields()
 
     def normalizeAntFields(self):
-
+        """
+        self-explanatory
+        """
         for ant in range(1, self.OP.N):
             for port in self.ports:
                 for component in self.BD.components:
                     self.farFields[f'c{port}{ant}{component}'] = \
-                        self.farFields[f'c{port}{ant}{component}'] / np.sqrt(np.real(self.antNorm)[ant + self.portKey[port] - 1])
+                        self.farFields[f'c{port}{ant}{component}'] / np.sqrt(
+                            np.real(self.antNorm)[ant + self.portKey[port] - 1])
 
     def integrateMutual(self):
         """
@@ -340,7 +377,7 @@ class Synthesizer:
 
     def integrateMixed(self):
         """
-        function to calculate inner produact between the fields corresponding to an excitations and the target pattern
+        function to calculate inner product between the fields corresponding to an excitations and the target pattern
         """
         self.mixedTerm = np.zeros_like(self.mixedTerm)
 
@@ -349,19 +386,19 @@ class Synthesizer:
                 for port in self.ports:
                     for component in self.BD.components:
                         self.mixedTerm[goal - 1, ant - 1 + self.portKey[port]] += \
-                        self.innerProduct(self.farFields[f'goal{goal}{component}'],
-                                          self.farFields[f'c{port}{ant}{component}'])
+                            self.innerProduct(self.farFields[f'goal{goal}{component}'],
+                                              self.farFields[f'c{port}{ant}{component}'])
 
     def integrateTarget(self):
         """
-            function to calculate the 'norm' of the target pattern
+        function to calculate the 'norm' of the target pattern
         """
         self.targetNorm = np.zeros_like(self.targetNorm)
 
         for goal in range(1, self.TP.goalNum + 1):
             for component in self.BD.components:
                 self.targetNorm[goal - 1] += self.innerProduct(self.farFields[f'goal{goal}{component}'],
-                            self.farFields[f'goal{goal}{component}'])
+                                                               self.farFields[f'goal{goal}{component}'])
 
     def fieldFromExcit(self, excitation):
         """
@@ -418,7 +455,8 @@ class Synthesizer:
 
                 # normalize to V
                 # Data format is: for cn excitation, [real(E_theta) + imag(E_theta), real(E_phi) + imag(E_phi)]
-                self.farFields[f'c{port}{ind}__theta'] = self.BD.unitDict[vals.units_data['rETheta']] * fields['rETheta']
+                self.farFields[f'c{port}{ind}__theta'] = self.BD.unitDict[vals.units_data['rETheta']] * fields[
+                    'rETheta']
                 self.farFields[f'c{port}{ind}__phi'] = self.BD.unitDict[vals.units_data['rEPhi']] * fields['rEPhi']
 
                 self.app[f'{self.OP.ampSymbol}{port}{ind}'] = '0.000001V'
@@ -454,11 +492,9 @@ class Synthesizer:
         self.recalc(geomParams)
         self.simTime = time.perf_counter() - t1
 
-
-
     def findOptimalExcitation(self):
         """
-        self-explanatory, refer to the formulas in the paper by Marak et al.
+        find the optimal excitation to achieve the desired goal patterns, refer to the formulas in the paper by Marak et al.
         """
         self.integrateAntFields()
         self.integrateMutual()
@@ -469,7 +505,8 @@ class Synthesizer:
         self.optimalExcitation = []
 
         for goal in range(0, self.TP.goalNum):
-            deltaAux[goal] = np.abs((np.dot(self.mixedTerm[goal, :].T.conjugate(), np.dot(self.mutZ, self.mixedTerm[goal, :]))))
+            deltaAux[goal] = np.abs(
+                (np.dot(self.mixedTerm[goal, :].T.conjugate(), np.dot(self.mutZ, self.mixedTerm[goal, :]))))
             self.optimalExcitation.append((np.dot(self.mutZ, self.mixedTerm[goal, :])))
 
         self.currentDeltas[0:-1] = 1 - deltaAux[0:-1]
@@ -515,9 +552,11 @@ class Synthesizer:
         self.writeLog(geomParams)
         return self.currentDeltas[-1]
 
-
     def pickleSaver(self, archiveName):
-
+        """
+        save important fields to a pickle archive
+        :param archiveName: name-code for the archive
+        """
         fieldsToSave = {'deltas': self.deltas, 'excitations': self.excitations, 'positions': self.positions,
                         'runTimes': self.simTimes, 'allX': self.allX, 'x0': self.OP.x0, 'antNorm': self.antNorm,
                         'farFields': self.farFields}
@@ -527,6 +566,9 @@ class Synthesizer:
             pickle.dump(fieldsToSave, file)
 
     def simultaneousOptimizer(self):
+        """
+        simultaneous optimizer definition
+        """
         # instantiate optimizer object
         opt = nlopt.opt(self.OP.method, self.OP.optimParamNum)
 
@@ -546,6 +588,11 @@ class Synthesizer:
         self.pickleSaver('Simult')
 
     def successiveOptimizer(self, outerIters):
+        """
+        successive optimizer definition
+        :param outerIters: number of 'outer' iterations, meaning the number of antenna replacements in an optimization
+        run
+        """
         for iter in range(0, outerIters):
             for optimIndex, optimParam in enumerate(self.OP.geomParamNames):
                 # instantiate optimizer object
@@ -567,13 +614,21 @@ class Synthesizer:
         self.pickleSaver('Succ')
 
     def angleGrid(self):
+        """
+        get theta and phi multiindex values from a far field dataframe
+        """
         # Extract levels for phi and theta coordinates
         phiVals = self.farFields.index.get_level_values('phi')
         thetaVals = self.farFields.index.get_level_values('theta')
         return thetaVals, phiVals
 
-    def plotPreprocessing(self, field, maxTheta = None, maxPhi = None):
-
+    def plotPreprocessing(self, field, maxTheta=None, maxPhi=None):
+        """
+        find maximum values of the given field in terms of spherical angles theta and phi
+        :param field: a column of the far field dataframe
+        :param maxTheta: manual input for the maximum, overrides the maximization routine
+        :param maxPhi: analogous
+        """
         thetaVals, phiVals = self.angleGrid()
         # Find the indices of the maximum value in the synthetic field
         maxIndTheta = np.argmax(np.abs(field[0]))
@@ -595,8 +650,16 @@ class Synthesizer:
 
         return eThetaMax__Theta, eThetaMax__Phi, ePhiMax__Theta, ePhiMax__Phi
 
-    def plotBase(self, fieldComponent, maxTheta, maxPhi, title, addTarget = False, showDelta = False):
-
+    def plotBase(self, fieldComponent, maxTheta, maxPhi, title, addTarget=False, showDelta=False):
+        """
+        plotting function
+        :param fieldComponent: column of the far field dataframe
+        :param maxTheta: the coordinate of fieldComponent's maximum absolute value
+        :param maxPhi: analogous
+        :param title: plot title
+        :param addTarget: target pattern limits
+        :param showDelta: delta (synthesis error value)
+        """
         thetaVals, phiVals = self.angleGrid()
         # Create a scatter plot with color-coded complex values
         plt.figure(figsize=(8, 6))
@@ -619,7 +682,7 @@ class Synthesizer:
 
             # Adding the rectangle outlines
             rectTheta, rectPhi = zip(*addTarget, addTarget[0])  # Closing the rectangle
-            plt.plot(rectTheta, rectPhi, color='red', linewidth=2,  label='target pattern outline')
+            plt.plot(rectTheta, rectPhi, color='red', linewidth=2, label='target pattern outline')
             plt.legend()
 
             if showDelta:
@@ -629,24 +692,38 @@ class Synthesizer:
                 plt.text(textX, textY, f'delta = {showDelta:.3f}', color='red', ha='left', va='bottom')
         plt.show()
 
-    def plot4Excitation(self, excitation, addTarget = False, showDelta = None):
-
+    def plot4Excitation(self, excitation, addTarget=False, showDelta=None):
+        """
+        plot a far field for an arbitrary excitation
+        :param excitation: the excitation (voltages on antennas)
+        :param addTarget: target pattern limits
+        :param showDelta: delta (synthesis error value)
+        """
         synthField = self.fieldFromExcit(excitation)
         eThetaMax__Theta, eThetaMax__Phi, ePhiMax__Theta, ePhiMax__Phi = self.plotPreprocessing(synthField)
-        self.plotBase(synthField[0], eThetaMax__Theta, eThetaMax__Phi, 'theta component of the radiated field', addTarget, showDelta)
-        self.plotBase(synthField[1], ePhiMax__Theta, ePhiMax__Phi, 'phi component of the radiated field', addTarget, showDelta)
+        self.plotBase(synthField[0], eThetaMax__Theta, eThetaMax__Phi, 'theta component of the radiated field',
+                      addTarget, showDelta)
+        self.plotBase(synthField[1], ePhiMax__Theta, ePhiMax__Phi, 'phi component of the radiated field', addTarget,
+                      showDelta)
 
     def plotOptimal(self, goal):
-
+        """
+        plot the field following from the optimal excitation calculation
+        :param goal: goal pattern index
+        """
         target = [[self.TP.thetaLims[goal][0], self.TP.phiLims[goal][0]],
                   [self.TP.thetaLims[goal][0], self.TP.phiLims[goal][1]],
                   [self.TP.thetaLims[goal][1], self.TP.phiLims[goal][1]],
                   [self.TP.thetaLims[goal][1], self.TP.phiLims[goal][0]]]
 
-        self.plot4Excitation(self.optimalExcitation[goal], addTarget = target,
-                             showDelta = self.currentDeltas[goal])
-    def plotGoal(self, goal):
+        self.plot4Excitation(self.optimalExcitation[goal], addTarget=target,
+                             showDelta=self.currentDeltas[goal])
 
+    def plotGoal(self, goal):
+        """
+        plot a goal function
+        :param goal: goal pattern index
+        """
         thetaCenter = np.mean(self.TP.thetaLims[goal, :])
         phiCenter = np.mean(self.TP.phiLims[goal, :])
         goalField = [self.farFields[f'goal{goal + 1}__theta'], self.farFields[f'goal{goal + 1}__phi']]
@@ -664,5 +741,3 @@ def complexVecDF(phi1r, phi1i, theta1r, theta1i):
     :return:
     """
     return np.array([complex(theta1r, theta1i), complex(phi1r, phi1i)])
-
-
