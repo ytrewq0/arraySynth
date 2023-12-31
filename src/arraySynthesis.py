@@ -14,12 +14,10 @@ import matplotlib.pyplot as plt
 aconst = 1 / 180 * np.pi
 
 
-# base data class
-
 
 class TargetPattern:
     """
-    Class describing to the patterns to synthesize
+    Class describing the patterns to synthesize
     """
 
     def __init__(self, thetaCenters, phiCenters, thetaWidth, phiWidth, polarization, angleMargin=0.1):
@@ -93,13 +91,17 @@ class OptimizationParams:
     Parameters for the optimizer
     """
 
-    def __init__(self, N, runTime, xMin, xMax, x0, geomParamNames, ampSymbol, phaseSymbol,
+    def __init__(self, N, runTime, xMin, xMax, x0, geomParamNames, ampSymbol = 'c', phaseSymbol = 'p',
                  method=nlopt.GN_DIRECT_L_RAND, dualPort=False):
         """
         :param N: number of antennas
         :param runTime: optimization time limit in seconds
         :param xMin: array of minimum limit for the optimization parameters
         :param xMax: -||- maximum
+        :param x0: initial step of the optimization (may get overwritten in the successive algorithm)
+        :param geomParamNames: names of the optimizable geometric params in the hfss model
+        :param ampSymbol: symbol for the amplitudes in the hffs model
+        :param phase: symbol for the phases in the hffs model
         :param method: optimization method
         :param dualPort: whether there's two ports on the antenna
         """
@@ -358,7 +360,7 @@ class Synthesizer:
 
     def integrateMutual(self):
         """
-            function to calculate inner product between the fields corresponding to different excitations
+        function to calculate inner product between the fields corresponding to different excitations
         """
 
         self.mutY = np.zeros_like(self.mutY)
