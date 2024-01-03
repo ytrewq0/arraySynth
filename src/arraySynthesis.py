@@ -52,6 +52,7 @@ class TargetPattern:
         self.goalNum = self.lims.shape[0]
         self.thetaLims = self.lims[:, 0]
         self.phiLims = self.lims[:, 1]
+        self.dirVec = None
 
     def calculateLobeBoundaries(self) -> None:
         """
@@ -97,6 +98,7 @@ class TargetPattern:
         else:
             raise ValueError("Polarization should be 'theta', 'phi', 'both', or 'custom'")
 
+
 class OptimizationParams:
     """
     Parameters for the optimizer.
@@ -132,6 +134,7 @@ class OptimizationParams:
         self.optimParamNum = len(xMin)
         self.method = method
 
+
 class BasicData:
     """
         Basic input data for the synthesis.
@@ -161,7 +164,8 @@ class BasicData:
         # number of max passes (HFSS parameter)
         self.maxPasses = maxPasses
 
-class Synthesizer:
+
+class AntennaArray:
     """
         Object realizing the synthesis.
     """
@@ -191,7 +195,7 @@ class Synthesizer:
         # simulation runTime for the current simulation
         self.simTime = None
 
-        if self.OP.dualPort == True:
+        if self.OP.dualPort:
             # pattern norm vector
             self.antNorm = np.empty(2 * self.OP.N, np.complex128)
             # mutual inductance matrix
@@ -217,72 +221,8 @@ class Synthesizer:
         # dict for transforming port descriptor to index
         self.portKey = {'': 0, "_p": self.OP.N}
 
-        # HFSS  handle
-        self.app = None
         # far field dataframe
         self.farFields = None
-
-    def fastGenerate(self) -> None:
-        """
-        Launch HFSS, generate the far fields dataframe containing the fields corresponding to unit excitations and the 
-        target fields and prepare for synthesis run.
-        """
-        self.app = Hfss()
-        self.app.load_project(self.BD.designPath)
-        self.app.field_setups[0].phi_step = self.BD.angStep
-        self.app.field_setups[0].theta_step = self.BD.angStep
-
-        setupName = self.app.setups[0].name
-        maxPassesOriginal = self.app.setups[0].props['MaximumPasses']
-        self.app.edit_setup(setupName, {'MaximumPasses': 1})
-        self.generateFarFieldDF()
-        if self.BD.maxPasses is None:
-            self.app.edit_setup(setupName, {'MaximumPasses': maxPassesOriginal})
-        else:
-            self.app.edit_setup(setupName, {'MaximumPasses': self.BD.maxPasses})
-        self.app.close_project()
-
-    def generateFarFieldDF(self) -> None:
-        """
-        Set up the dataframe containing all far field data.
-        """
-        self.app.analyze()
-        self.app.settings.enable_pandas_output = True
-
-        # get far field values from API
-        vals = self.app.post.get_far_field_data(["rEPhi", "rETheta"])
-        self.farFields = vals.full_matrix_real_imag
-        self.farFields = self.farFields[0] + 1j * self.farFields[1]
-
-        # Data format is: for cn excitation, [real(E_theta) + imag(E_theta), real(E_phi) + imag(E_phi)]
-        for ind in range(1, self.OP.N + 1):
-            for port in self.ports:
-                self.farFields[f'c{port}{ind}__theta'] = copy.deepcopy(self.farFields['rETheta'])
-                self.farFields[f'c{port}{ind}__phi'] = copy.deepcopy(self.farFields['rEPhi'])
-
-        # delete clutter
-        self.farFields = self.farFields.drop(['rETheta', 'rEPhi'], axis=1)
-
-        self.intCoeff()
-        self.writeTargetPatterns()
-        self.hfssSetZeroExcit()
-
-    def intCoeff(self) -> None:
-        """
-        Add the integration coefficients to the main dataframe.
-        """
-        # assign names to the multiindex
-        self.farFields.index = self.farFields.index.set_names(['freq', 'phi', 'theta'])
-
-        # Define conditions for 'intCoeff' using np.isclose (integral correction at 'doubly' counted points )
-        thetaCond = (np.isclose(self.farFields.index.get_level_values('theta'), 0, atol=0.01) +
-                     np.isclose(self.farFields.index.get_level_values('theta'), 180, atol=0.01))
-
-        phiCond = (np.isclose(self.farFields.index.get_level_values('phi'), -180, atol=0.01) +
-                   np.isclose(self.farFields.index.get_level_values('phi'), 180, atol=0.01))
-
-        # Assign values to 'intCoeff' based on conditions
-        self.farFields['intCoeff'] = 0.5 * (thetaCond | phiCond) + 1 * ~(thetaCond | phiCond)
 
     def writeTargetPatterns(self) -> None:
         """
@@ -316,23 +256,6 @@ class Synthesizer:
             for component in self.BD.components:
                 self.farFields[f'goal{goal}{component}'] = self.farFields[f'goal{goal}{component}'] / np.sqrt(
                     self.targetNorm[goal - 1])
-
-    def hfssSetZeroExcit(self) -> None:
-        """
-        Set zero values for the excitations. Also serves as a check to see whether they are defined in the model.
-        """
-        for j in range(1, self.OP.N + 1):
-            self.app[f'{self.OP.ampSymbol}{j}'] = '0.000001V'
-            self.app[f'{self.OP.ampSymbol}_p{j}'] = '0.000001V'
-            self.app[f'{self.OP.phaseSymbol}{j}'] = '0.0'
-            self.app[f'{self.OP.phaseSymbol}_p{j}'] = '0.0'
-
-        thStep = self.farFields.index.get_level_values('theta').unique()[1] - \
-                 self.farFields.index.get_level_values('theta').unique()[0]
-        phStep = self.farFields.index.get_level_values('phi').unique()[1] - \
-                 self.farFields.index.get_level_values('phi').unique()[0]
-        if np.abs(thStep - phStep) / thStep >= 0.01:
-            raise ValueError("step size in theta and phi should be the same")
 
     def innerProduct(self, var1: pd.Series, var2: pd.Series) -> float:
         """
@@ -447,6 +370,132 @@ class Synthesizer:
         delt[-1] = np.linalg.norm(delt[0: -1]) / np.sqrt(self.TP.goalNum)
         return delt
 
+    def findOptimalExcitation(self) -> None:
+        """
+        Find the optimal excitation to achieve the desired goal patterns, refer to the formulas in the paper by Marak et al.
+        """
+        self.integrateAntFields()
+        self.integrateMutual()
+        self.integrateMixed()
+
+        deltaAux = np.zeros(self.TP.goalNum + 1)
+        self.currentDeltas = np.zeros(self.TP.goalNum + 1)
+        self.optimalExcitation = []
+
+        for goal in range(0, self.TP.goalNum):
+            deltaAux[goal] = np.abs(
+                (np.dot(self.mixedTerm[goal, :].T.conjugate(), np.dot(self.mutZ, self.mixedTerm[goal, :]))))
+            self.optimalExcitation.append((np.dot(self.mutZ, self.mixedTerm[goal, :])))
+
+        self.currentDeltas[0:-1] = 1 - deltaAux[0:-1]
+        self.currentDeltas[-1] = np.linalg.norm(self.currentDeltas[0: -1]) / np.sqrt(self.TP.goalNum)
+
+        d0 = self.integrateByDef(self.optimalExcitation)
+
+    def angleGrid(self) -> Tuple[pd.Series, pd.Series]:
+        """
+        Get theta and phi multiindex values from a far field dataframe.
+
+        :return: Grid points for theta and phi coordinates as a tuple of Pandas Series.
+        """
+        # Extract levels for phi and theta coordinates
+        phiVals = self.farFields.index.get_level_values('phi')
+        thetaVals = self.farFields.index.get_level_values('theta')
+        return thetaVals, phiVals
+
+
+class ArraySynthesis(AntennaArray):
+    """
+    Subclass of AntennaArray responsible for the synthesis algorithm and HFSS interfacing.
+    """
+    def __init__(self, TP: TargetPattern, OP: OptimizationParams, BD: BasicData):
+        """
+        :param TP, OP, BD: target, optimization and basic data objects.
+        """
+        super().__init__(TP, OP, BD)
+        # HFSS  handle
+        self.app = None
+        self.fastGenerate()
+
+    def fastGenerate(self) -> None:
+        """
+        Launch HFSS, generate the far fields dataframe containing the fields corresponding to unit excitations and the
+        target fields and prepare for synthesis run.
+        """
+        self.app = Hfss()
+        self.app.load_project(self.BD.designPath)
+        self.app.field_setups[0].phi_step = self.BD.angStep
+        self.app.field_setups[0].theta_step = self.BD.angStep
+
+        setupName = self.app.setups[0].name
+        maxPassesOriginal = self.app.setups[0].props['MaximumPasses']
+        self.app.edit_setup(setupName, {'MaximumPasses': 1})
+        self.generateFarFieldDF()
+        if self.BD.maxPasses is None:
+            self.app.edit_setup(setupName, {'MaximumPasses': maxPassesOriginal})
+        else:
+            self.app.edit_setup(setupName, {'MaximumPasses': self.BD.maxPasses})
+        self.app.close_project()
+
+    def generateFarFieldDF(self) -> None:
+        """
+        Set up the dataframe containing all far field data.
+        """
+        self.app.analyze()
+        self.app.settings.enable_pandas_output = True
+
+        # get far field values from API
+        vals = self.app.post.get_far_field_data(["rEPhi", "rETheta"])
+        self.farFields = vals.full_matrix_real_imag
+        self.farFields = self.farFields[0] + 1j * self.farFields[1]
+
+        # Data format is: for cn excitation, [real(E_theta) + imag(E_theta), real(E_phi) + imag(E_phi)]
+        for ind in range(1, self.OP.N + 1):
+            for port in self.ports:
+                self.farFields[f'c{port}{ind}__theta'] = copy.deepcopy(self.farFields['rETheta'])
+                self.farFields[f'c{port}{ind}__phi'] = copy.deepcopy(self.farFields['rEPhi'])
+
+        # delete clutter
+        self.farFields = self.farFields.drop(['rETheta', 'rEPhi'], axis=1)
+
+        self.intCoeff()
+        self.writeTargetPatterns()
+        self.hfssSetZeroExcit()
+
+    def intCoeff(self) -> None:
+        """
+        Add the integration coefficients to the main dataframe.
+        """
+        # assign names to the multiindex
+        self.farFields.index = self.farFields.index.set_names(['freq', 'phi', 'theta'])
+
+        # Define conditions for 'intCoeff' using np.isclose (integral correction at 'doubly' counted points )
+        thetaCond = (np.isclose(self.farFields.index.get_level_values('theta'), 0, atol=0.01) +
+                     np.isclose(self.farFields.index.get_level_values('theta'), 180, atol=0.01))
+
+        phiCond = (np.isclose(self.farFields.index.get_level_values('phi'), -180, atol=0.01) +
+                   np.isclose(self.farFields.index.get_level_values('phi'), 180, atol=0.01))
+
+        # Assign values to 'intCoeff' based on conditions
+        self.farFields['intCoeff'] = 0.5 * (thetaCond | phiCond) + 1 * ~(thetaCond | phiCond)
+
+    def hfssSetZeroExcit(self) -> None:
+        """
+        Set zero values for the excitations. Also serves as a check to see whether they are defined in the model.
+        """
+        for j in range(1, self.OP.N + 1):
+            self.app[f'{self.OP.ampSymbol}{j}'] = '0.000001V'
+            self.app[f'{self.OP.ampSymbol}_p{j}'] = '0.000001V'
+            self.app[f'{self.OP.phaseSymbol}{j}'] = '0.0'
+            self.app[f'{self.OP.phaseSymbol}_p{j}'] = '0.0'
+
+        thStep = self.farFields.index.get_level_values('theta').unique()[1] - \
+                 self.farFields.index.get_level_values('theta').unique()[0]
+        phStep = self.farFields.index.get_level_values('phi').unique()[1] - \
+                 self.farFields.index.get_level_values('phi').unique()[0]
+        if np.abs(thStep - phStep) / thStep >= 0.01:
+            raise ValueError("step size in theta and phi should be the same")
+
     def setAnalyze(self, geomParams: np.ndarray) -> None:
         """
         Set geometry and solve setup in HFSS.
@@ -510,28 +559,6 @@ class Synthesizer:
         self.recalc(geomParams)
         self.simTime = time.perf_counter() - t1
 
-    def findOptimalExcitation(self) -> None:
-        """
-        Find the optimal excitation to achieve the desired goal patterns, refer to the formulas in the paper by Marak et al.
-        """
-        self.integrateAntFields()
-        self.integrateMutual()
-        self.integrateMixed()
-
-        deltaAux = np.zeros(self.TP.goalNum + 1)
-        self.currentDeltas = np.zeros(self.TP.goalNum + 1)
-        self.optimalExcitation = []
-
-        for goal in range(0, self.TP.goalNum):
-            deltaAux[goal] = np.abs(
-                (np.dot(self.mixedTerm[goal, :].T.conjugate(), np.dot(self.mutZ, self.mixedTerm[goal, :]))))
-            self.optimalExcitation.append((np.dot(self.mutZ, self.mixedTerm[goal, :])))
-
-        self.currentDeltas[0:-1] = 1 - deltaAux[0:-1]
-        self.currentDeltas[-1] = np.linalg.norm(self.currentDeltas[0: -1]) / np.sqrt(self.TP.goalNum)
-
-        d0 = self.integrateByDef(self.optimalExcitation)
-
     def writeLog(self, geomParams: np.ndarray) -> None:
         """
         Write iteration results into text files and append to the class' tracking lists
@@ -577,8 +604,8 @@ class Synthesizer:
         :param archiveName: name-code for the archive
         """
         fieldsToSave = {'deltas': self.deltas, 'excitations': self.excitations, 'positions': self.positions,
-                        'runTimes': self.simTimes, 'allX': self.allX, 'x0': self.OP.x0, 'antNorm': self.antNorm,
-                        'farFields': self.farFields}
+                        'simTimes': self.simTimes, 'allX': self.allX, 'x0': self.OP.x0, 'antNorm': self.antNorm,
+                        'farFields': self.farFields, 'TP': self.TP, 'BD': self.BD, 'OP': self.OP}
 
         # Save the selected fields to a pickle archive
         with open(f'data/res{archiveName}{self.BD.processNum}.pkl', 'wb') as file:
@@ -633,19 +660,25 @@ class Synthesizer:
 
         self.pickleSaver('Succ')
 
-    def angleGrid(self) -> Tuple[pd.Series, pd.Series]:
+class ArrayPostProcessing(AntennaArray):
+    """
+    Subclass of AntennaArray responsible for the synthesis algorithm and HFSS interfacing.
+    """
+    def __init__(self, archivePath: str):
         """
-        Get theta and phi multiindex values from a far field dataframe.
-
-        :return: Grid points for theta and phi coordinates as a tuple of Pandas Series.
+        :param TP, OP, BD: target, optimization and basic data objects.
+        :param archivePath:
         """
-        # Extract levels for phi and theta coordinates
-        phiVals = self.farFields.index.get_level_values('phi')
-        thetaVals = self.farFields.index.get_level_values('theta')
-        return thetaVals, phiVals
+        fields = pd.read_pickle(archivePath)
 
-    def plotPreprocessing(self, field: Union[pd.Series, np.ndarray], maxTheta: Optional[Union[float, int]] = None,
-                          maxPhi: Optional[Union[float, int]] = None) -> Tuple[float, float, float, float]:
+        super().__init__(fields['TP'], fields['OP'], fields['BD'])
+
+        for key, value in fields.items():
+            setattr(self, key, value)
+
+
+    def maxFind4Plot(self, field: List[pd.Series], maxTheta: Optional[Union[float, int]] = None,
+                     maxPhi: Optional[Union[float, int]] = None) -> Tuple[float, float, float, float]:
         """
         Find maximum values of the given field in terms of spherical angles theta and phi.
 
@@ -721,7 +754,7 @@ class Synthesizer:
         plt.show()
 
     def plot4Excitation(self, excitation: Union[np.ndarray, List[float]],
-                        addTarget: Union[bool, List[Tuple[float, float]]] = False,
+                        addTarget: Union[bool, List[List[float, float]]] = False,
                         showDelta: Union[bool, float] = False) -> None:
         """
         Plot a far field for an arbitrary excitation.
@@ -731,7 +764,7 @@ class Synthesizer:
         :param showDelta: Delta (synthesis error value) or None if not used.
         """
         synthField = self.fieldFromExcit(excitation)
-        eThetaMax__Theta, eThetaMax__Phi, ePhiMax__Theta, ePhiMax__Phi = self.plotPreprocessing(synthField)
+        eThetaMax__Theta, eThetaMax__Phi, ePhiMax__Theta, ePhiMax__Phi = self.maxFind4Plot(synthField)
         self.plotBase(synthField[0], eThetaMax__Theta, eThetaMax__Phi, 'theta component of the radiated field',
                       addTarget, showDelta)
         self.plotBase(synthField[1], ePhiMax__Theta, ePhiMax__Phi, 'phi component of the radiated field', addTarget,
@@ -762,4 +795,3 @@ class Synthesizer:
         goalField = [self.farFields[f'goal{goal + 1}__theta'], self.farFields[f'goal{goal + 1}__phi']]
         self.plotBase(goalField[0], thetaCenter, phiCenter, 'Theta component of the goal pattern')
         self.plotBase(goalField[1], thetaCenter, phiCenter, 'Phi component of the goal pattern')
-
