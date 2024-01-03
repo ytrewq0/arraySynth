@@ -1,7 +1,7 @@
 from simultProblemDef import *
 import matplotlib.pyplot as plt
 
-fName = f'data\\resSimult1.pkl'
+fName = '..//data//resSucc1.pkl'
 results = pd.read_pickle(fName)
 
 deltaList = [deltas[-1] for deltas in results['deltas']]
