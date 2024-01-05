@@ -10,6 +10,8 @@ from src.antennaArrays.AntennaArray import AntennaArray, BasicData, TargetPatter
 from src.antennaArrays.ArraySynthesis import ArraySynthesis
 import src.antennaArrays
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 class FarFieldData:
     def __init__(self, picklePath):
         # Read the DataFrame from the pickle file
