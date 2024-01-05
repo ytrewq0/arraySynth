@@ -6,11 +6,12 @@ import pandas as pd
 import numpy as np
 
 from numpy.random import random
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.antennaArrays.AntennaArray import AntennaArray, BasicData, TargetPattern, OptimizationParams
 from src.antennaArrays.ArraySynthesis import ArraySynthesis
 import src.antennaArrays
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 class FarFieldData:
     def __init__(self, picklePath):
