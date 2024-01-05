@@ -1,4 +1,6 @@
-from arraySynthesis import *
+from src.antennaArrays.ArraySynthesis import ArraySynthesis
+from src.antennaArrays.AntennaArray import BasicData, TargetPattern, OptimizationParams
+import numpy as np
 
 angStep = 1
 fileName = 'patch_circ_dual'
@@ -14,7 +16,7 @@ phiWidth = 10
 TP = TargetPattern(thetaCenters, phiCenters, thetaWidth, phiWidth, 'both')
 
 N = 9
-runTime = 3600
+runTime = 10
 xMin = np.array([80, 80])
 xMax = np.array([150, 150])
 x0 = np.array([100, 100])

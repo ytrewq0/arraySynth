@@ -1,4 +1,5 @@
-from arraySynthesis import *
+from src.antennaArrays.ArrayPostProcessing import ArrayPostProcessing
+from src.antennaArrays.AntennaArray import TargetPattern
 
 archivePath = '..//data//resSucc1.pkl'
 
