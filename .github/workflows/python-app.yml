@@ -45,4 +45,5 @@ jobs:
     - name: Test with pytest
       run: |
         pytest
+      working-directory: test
       shell: powershell
