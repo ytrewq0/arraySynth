@@ -8,7 +8,7 @@ import numpy as np
 from numpy.random import random
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from src.antennaArrays.AntennaArray import AntennaArray, BasicData, TargetPattern, OptimizationParams
+from src.antennaArrays.AntennaArray import AntennaArray, BasicData, TargetPattern, OptimizationParams, findProjectBase
 from src.antennaArrays.ArraySynthesis import ArraySynthesis
 import src.antennaArrays
 
@@ -78,7 +78,7 @@ class TestApp(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Create an instance of MockApp
-        picklePath = "resSimult1_20240105_003823.pkl"  # Replace with the actual path
+        picklePath = f"{findProjectBase()}/test/resSimult1_20240105_003823.pkl"
         cls.mockApp = MockApp(picklePath = picklePath)
 
         # Create an instance of ArraySynthesis with MockApp

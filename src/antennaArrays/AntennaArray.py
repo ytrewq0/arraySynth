@@ -32,7 +32,8 @@ def findProjectBase():
 
         # If we've reached the root of the file system without finding venv, stop
         if parent_dir == current_dir:
-            raise Exception("Project base directory with 'venv' not found.")
+            #raise Exception("Project base directory with 'venv' not found.")
+            return parent_dir
 
         current_dir = parent_dir
 
