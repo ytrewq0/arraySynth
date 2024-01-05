@@ -78,7 +78,7 @@ class TestApp(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Create an instance of MockApp
-        picklePath = f"{findProjectBase()}test\\resSimult1_20240105_003823.pkl"
+        picklePath = "resSimult1_20240105_003823.pkl"
         cls.mockApp = MockApp(picklePath = picklePath)
 
         # Create an instance of ArraySynthesis with MockApp
