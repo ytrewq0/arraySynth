@@ -1,16 +1,15 @@
 Antenna array synthesis algorithm integrated with HFSS.
 
-arraySynthesis.py - main class for synthesis
+AntennaArray.py - base classes for antenna arrays
+
+ArraySynthesis.py - derived class for synthesis
+
+ArrayPostProcessing.py - derived class for visualization
 
 postProcess.py - example workflow for visualization
 
 requirements.txt - used packages; when cloning from Github, PyCharm should install them automatically
 
-simultProblemDef.py - problem definition function for simulataneous synthesis
-
-simultSynthesize.py - runs the simulatenous synthesis with the problem definition generated with the above funtcion.
-
-succProblemDef.py - problem definition function for successive synthesis
+simultSynthesize.py - example workflow, runs the simulatenous synthesis 
 	
-	
-succSynthesize.py - runs the successive synthesis with the problem definition generated with the above funtcion.
+succSynthesize.py - example workflow, runs the successive synthesis
