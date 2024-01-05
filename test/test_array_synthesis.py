@@ -13,6 +13,16 @@ from src.antennaArrays.ArraySynthesis import ArraySynthesis
 import src.antennaArrays
 
 
+
+# Check if running in GitHub Actions
+if 'GITHUB_WORKSPACE' in os.environ:
+    # If running in GitHub Actions, construct the path relative to GITHUB_WORKSPACE
+    filePath = os.path.join(os.environ['GITHUB_WORKSPACE'], 'test', 'resSimult1_20240105_003823.pkl')
+else:
+    # If running locally, you can define the base path as needed (e.g., current directory)
+    filePath = 'resSimult1_20240105_003823.pkl'
+
+
 class FarFieldData:
     def __init__(self, picklePath):
         # Read the DataFrame from the pickle file
@@ -78,7 +88,7 @@ class TestApp(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Create an instance of MockApp
-        picklePath = "resSimult1_20240105_003823.pkl"
+        picklePath = filePath
         cls.mockApp = MockApp(picklePath = picklePath)
 
         # Create an instance of ArraySynthesis with MockApp
