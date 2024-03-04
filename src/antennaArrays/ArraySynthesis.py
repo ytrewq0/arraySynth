@@ -11,7 +11,7 @@ class ArraySynthesis(AntennaArray):
         """
         super().__init__(TP, OP, BD)
         # HFSS  handle
-        self.app = None
+        self.app = app
         self.fastGenerate(app)
 
     def fastGenerate(self, app = None) -> None:
