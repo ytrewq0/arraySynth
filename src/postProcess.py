@@ -1,7 +1,7 @@
 from src.antennaArrays.ArrayPostProcessing import ArrayPostProcessing
 from src.antennaArrays.AntennaArray import TargetPattern
 
-archivePath = '..//data//resSucc1.pkl'
+archivePath = '..//data//resSimult1_20240310_180919.pkl'
 
 arrayPostProc = ArrayPostProcessing(archivePath)
 

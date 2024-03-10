@@ -16,7 +16,7 @@ phiWidth = 10
 TP = TargetPattern(thetaCenters, phiCenters, thetaWidth, phiWidth, 'both')
 
 N = 9
-runTime = 10
+runTime = 600
 xMin = np.array([80, 80])
 xMax = np.array([150, 150])
 x0 = np.array([100, 100])
